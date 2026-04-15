@@ -1,4 +1,5 @@
 .codex
+config/upstream.conf
 config/server/
 config/clients/
 config/managed-clients/
