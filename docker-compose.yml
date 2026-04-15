@@ -11,7 +11,7 @@ services:
       - /dev/net/tun:/dev/net/tun
     ports:
       - "${SERVER_PORT:-51820}:${SERVER_PORT:-51820}/udp"
-      - "127.0.0.1:${ADMIN_PORT:-8080}:8080/tcp"
+      - "${ADMIN_HOST:-127.0.0.1}:${ADMIN_PORT:-8080}:8080/tcp"
     volumes:
       - ./config:/config
     environment:

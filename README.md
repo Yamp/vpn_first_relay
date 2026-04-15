@@ -84,10 +84,23 @@ sudo docker compose up -d --force-recreate
 
 ## Admin Panel
 
-The admin panel is exposed on host localhost only:
+By default, the admin panel is exposed on host localhost only:
 
 ```text
 http://127.0.0.1:8080/
+```
+
+To expose it on a specific host address, set `ADMIN_HOST` in `.env`:
+
+```text
+ADMIN_HOST=192.168.32.112
+ADMIN_PORT=8080
+```
+
+Then recreate the container:
+
+```bash
+sudo docker compose up -d --force-recreate
 ```
 
 It uses HTTP Basic Auth from `.env`:
