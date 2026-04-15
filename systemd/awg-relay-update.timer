@@ -1,0 +1,10 @@
+[Unit]
+Description=Run AWG relay update check every day at 03:00 Moscow time
+
+[Timer]
+OnCalendar=*-*-* 03:00:00 Europe/Moscow
+Persistent=true
+Unit=awg-relay-update.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,9 @@
+[Unit]
+Description=Update AWG relay image when AmneziaWG upstream changes
+Wants=network-online.target
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/ai_research/vpn_first_relay
+ExecStart=/home/ai_research/vpn_first_relay/scripts/update-awg.sh

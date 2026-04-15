@@ -1,0 +1,9 @@
+.env
+config/server/
+config/clients/
+config/managed-clients/
+config/geoip/
+config/admin.db
+*.log
+__pycache__/
+*.pyc

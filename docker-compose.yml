@@ -1,0 +1,39 @@
+services:
+  awg-relay:
+    build:
+      context: .
+    container_name: awg-relay
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    ports:
+      - "${SERVER_PORT:-51820}:${SERVER_PORT:-51820}/udp"
+      - "127.0.0.1:${ADMIN_PORT:-8080}:8080/tcp"
+    volumes:
+      - ./config:/config
+    environment:
+      SERVER_PORT: "${SERVER_PORT:-51820}"
+      SERVER_ADDRESS: "${SERVER_ADDRESS:-10.77.0.1/24}"
+      CLIENT_SUBNET: "${CLIENT_SUBNET:-10.77.0.0/24}"
+      CLIENT_ADDRESS: "${CLIENT_ADDRESS:-10.77.0.2/32}"
+      CLIENT_DNS: "${CLIENT_DNS:-1.1.1.1}"
+      PUBLIC_ENDPOINT: "${PUBLIC_ENDPOINT:-CHANGE_ME_HOST_OR_IP:51820}"
+      RU_ZONE_URL: "${RU_ZONE_URL:-https://www.ipdeny.com/ipblocks/data/countries/ru.zone}"
+      ADMIN_USERNAME: "${ADMIN_USERNAME:-admin}"
+      ADMIN_PASSWORD: "${ADMIN_PASSWORD:?set ADMIN_PASSWORD in .env or run scripts/install.sh}"
+      ADMIN_LISTEN_HOST: "0.0.0.0"
+      ADMIN_LISTEN_PORT: "8080"
+      WARNING_BEFORE_HOURS: "${WARNING_BEFORE_HOURS:-48}"
+      SMTP_HOST: "${SMTP_HOST:-}"
+      SMTP_PORT: "${SMTP_PORT:-587}"
+      SMTP_USERNAME: "${SMTP_USERNAME:-}"
+      SMTP_PASSWORD: "${SMTP_PASSWORD:-}"
+      SMTP_FROM: "${SMTP_FROM:-}"
+      SMTP_TLS: "${SMTP_TLS:-1}"
+    sysctls:
+      net.ipv4.ip_forward: "1"
+      net.ipv6.conf.all.disable_ipv6: "1"
+      net.ipv6.conf.default.disable_ipv6: "1"
