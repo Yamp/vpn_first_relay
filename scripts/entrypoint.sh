@@ -20,6 +20,8 @@ RU_ZONE_URL="${RU_ZONE_URL:-https://www.ipdeny.com/ipblocks/data/countries/ru.zo
 ANTIFILTER_IP_URL="${ANTIFILTER_IP_URL:-https://antifilter.download/list/allyouneed.lst}"
 ANTIFILTER_DOMAINS_URL="${ANTIFILTER_DOMAINS_URL:-https://antifilter.download/list/domains.lst}"
 SPLIT_DNS_UPSTREAMS="${SPLIT_DNS_UPSTREAMS:-1.1.1.1,8.8.8.8}"
+DIRECT_ASNS_FILE="${DIRECT_ASNS_FILE:-$CONFIG_DIR/routing/direct-asns.lst}"
+DIRECT_ASN_PREFIXES_FILE="${DIRECT_ASN_PREFIXES_FILE:-$CONFIG_DIR/routing/direct-asn-prefixes.zone}"
 
 SERVER_JC="${SERVER_JC:-4}"
 SERVER_JMIN="${SERVER_JMIN:-8}"
@@ -37,7 +39,7 @@ TABLE_ID="${TABLE_ID:-100}"
 FW_MARK="${FW_MARK:-0x1}"
 SERVER_LISTEN_ADDRESS="$(ip_from_cidr "$SERVER_ADDRESS")"
 
-mkdir -p "$CONFIG_DIR" "$RUNTIME_DIR" "$CONFIG_DIR/server" "$CONFIG_DIR/clients/client1" "$CONFIG_DIR/geoip" "$CONFIG_DIR/antifilter"
+mkdir -p "$CONFIG_DIR" "$RUNTIME_DIR" "$CONFIG_DIR/server" "$CONFIG_DIR/clients/client1" "$CONFIG_DIR/geoip" "$CONFIG_DIR/antifilter" "$CONFIG_DIR/routing"
 
 download_cached_list() {
   local url="$1"
@@ -227,6 +229,17 @@ for cidr in \
   ipset add direct4 "$cidr" -exist
 done
 
+write_default_direct_asns_file "$DIRECT_ASNS_FILE"
+prune_deprecated_direct_asns_file "$DIRECT_ASNS_FILE"
+ipset create direct_asn4 hash:net family inet -exist
+ipset flush direct_asn4
+refresh_direct_asn_prefixes "$DIRECT_ASNS_FILE" "$DIRECT_ASN_PREFIXES_FILE"
+if [[ -s "$DIRECT_ASN_PREFIXES_FILE" ]]; then
+  load_ipset_file direct_asn4 "$DIRECT_ASN_PREFIXES_FILE"
+else
+  echo "WARNING: direct ASN prefix list is empty; ASN-based direct routing is disabled." >&2
+fi
+
 ipset create direct_domains4 hash:ip family inet timeout 86400 -exist
 ipset flush direct_domains4
 ipset create vpn_domains4 hash:ip family inet timeout 86400 -exist
@@ -258,6 +271,7 @@ iptables -t mangle -A AWG_MARK_VPN -j MARK --set-mark "$FW_MARK"
 iptables -t mangle -A AWG_MARK_VPN -j RETURN
 iptables -t mangle -A AWG_SPLIT -m set --match-set vpn4 dst -j AWG_MARK_VPN
 iptables -t mangle -A AWG_SPLIT -m set --match-set vpn_domains4 dst -j AWG_MARK_VPN
+iptables -t mangle -A AWG_SPLIT -m set --match-set direct_asn4 dst -j RETURN
 iptables -t mangle -A AWG_SPLIT -m set --match-set direct4 dst -j RETURN
 iptables -t mangle -A AWG_SPLIT -m set --match-set direct_domains4 dst -j RETURN
 iptables -t mangle -A AWG_SPLIT -m set --match-set ru4 dst -j RETURN

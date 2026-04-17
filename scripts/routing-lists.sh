@@ -5,6 +5,45 @@ ip_from_cidr() {
   printf '%s\n' "${value%%/*}"
 }
 
+normalize_asn() {
+  local asn="$1"
+  asn="${asn%%#*}"
+  asn="${asn%%$'\r'}"
+  asn="${asn^^}"
+  asn="${asn#"${asn%%[![:space:]]*}"}"
+  asn="${asn%"${asn##*[![:space:]]}"}"
+  asn="${asn#AS}"
+
+  [[ "$asn" =~ ^[0-9]+$ ]] || return 1
+  printf 'AS%s\n' "$asn"
+}
+
+ripe_announced_prefixes_url() {
+  local asn
+  local base_url
+  asn="$(normalize_asn "$1")" || return 1
+  base_url="${RIPESTAT_BASE_URL:-https://stat.ripe.net}"
+  printf '%s/data/announced-prefixes/data.json?resource=%s&min_peers_seeing=1\n' "${base_url%/}" "$asn"
+}
+
+extract_ripe_ipv4_prefixes() {
+  python3 -c '
+import ipaddress
+import json
+import sys
+
+payload = json.load(sys.stdin)
+for item in payload.get("data", {}).get("prefixes", []):
+    prefix = item.get("prefix", "")
+    try:
+        network = ipaddress.ip_network(prefix, strict=False)
+    except ValueError:
+        continue
+    if network.version == 4:
+        print(network.with_prefixlen)
+'
+}
+
 normalize_dnsmasq_domain() {
   local domain="$1"
   domain="${domain%%#*}"
@@ -46,8 +85,6 @@ write_dnsmasq_config() {
     yandex.net
     yastatic.net
     yandexcloud.net
-    telegram.org
-    t.me
     my.com
     mail.com
     tinkoff.com
@@ -119,4 +156,106 @@ load_ipset_file() {
       echo "WARNING: failed to add '${cidr}' to ipset ${set_name}" >&2
     fi
   done < "$file_path"
+}
+
+write_default_direct_asns_file() {
+  local output_path="$1"
+  local output_dir
+  output_dir="$(dirname "$output_path")"
+  mkdir -p "$output_dir"
+
+  [[ -e "$output_path" ]] && return 0
+
+  cat > "$output_path" <<'EOF'
+# Russian-controlled content, banking, marketplace, and platform ASNs.
+# Edit this file to tune ASN-based direct routing. One ASN per line.
+AS13238  # Yandex
+AS200350 # Yandex.Cloud
+AS215013 # Yandex.Cloud CDN
+AS210656 # Yandex.Cloud BMS
+AS47541  # VKontakte
+AS47542  # VKontakte
+AS28709  # VK related
+AS47764  # VK / Mail.ru
+AS62243  # VK projects
+AS207581 # VK projects
+AS21051  # VK related
+AS57973  # VK related
+AS57073  # Wildberries
+AS44386  # Ozon
+AS201012 # Avito
+AS197482 # 2GIS
+AS35237  # Sberbank
+AS60122  # Sberbank
+AS47457  # Sberbank
+AS33844  # Sberbank
+AS43399  # T-Bank / Tinkoff
+AS12686  # T-Bank / Tinkoff
+AS28712  # T-Bank / Tinkoff
+AS15632  # Alfa-Bank
+AS208811 # Alfa-Bank
+AS59840  # Alfa-Bank
+EOF
+}
+
+prune_deprecated_direct_asns_file() {
+  local asns_path="$1"
+  local tmp_path="${asns_path}.tmp"
+  local deprecated_asns=" AS62041 AS62014 AS59930 AS44907 AS211157 "
+
+  [[ -f "$asns_path" ]] || return 0
+
+  local line asn
+  : > "$tmp_path"
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    if asn="$(normalize_asn "$line")" && [[ "$deprecated_asns" == *" ${asn} "* ]]; then
+      continue
+    fi
+    printf '%s\n' "$line" >> "$tmp_path"
+  done < "$asns_path"
+
+  mv "$tmp_path" "$asns_path"
+}
+
+refresh_direct_asn_prefixes() {
+  local asns_path="$1"
+  local output_path="$2"
+  local tmp_path="${output_path}.tmp"
+  local json_path="${output_path}.json.tmp"
+  local output_dir
+  output_dir="$(dirname "$output_path")"
+  mkdir -p "$output_dir"
+
+  : > "$tmp_path"
+
+  local line asn url
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    if ! asn="$(normalize_asn "$line")"; then
+      continue
+    fi
+    url="$(ripe_announced_prefixes_url "$asn")" || continue
+    if ! curl -fsSL --retry 3 --connect-timeout 10 "$url" -o "$json_path"; then
+      echo "WARNING: failed to download announced prefixes for ${asn}" >&2
+      rm -f "$json_path"
+      continue
+    fi
+    if ! extract_ripe_ipv4_prefixes < "$json_path" >> "$tmp_path"; then
+      echo "WARNING: failed to parse announced prefixes for ${asn}" >&2
+    fi
+    rm -f "$json_path"
+  done < "$asns_path"
+
+  if [[ -s "$tmp_path" ]]; then
+    sort -u "$tmp_path" > "$output_path"
+  else
+    rm -f "$tmp_path"
+    if [[ -s "$output_path" ]]; then
+      echo "WARNING: direct ASN prefix refresh produced no data; reusing cached ${output_path}." >&2
+    else
+      echo "WARNING: direct ASN prefix refresh produced no data; no cached list is available." >&2
+    fi
+    return 0
+  fi
+
+  rm -f "$tmp_path" "$json_path"
 }

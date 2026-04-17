@@ -35,6 +35,7 @@ config/server/
 config/clients/
 config/managed-clients/
 config/geoip/
+config/routing/
 config/admin.db
 ```
 
@@ -256,8 +257,6 @@ yandex.com
 yandex.net
 yastatic.net
 yandexcloud.net
-telegram.org
-t.me
 my.com
 mail.com
 tinkoff.com
@@ -269,6 +268,20 @@ avito.com
 cian.com
 2gis.com
 ```
+
+The container also creates an editable ASN allowlist at:
+
+```text
+config/routing/direct-asns.lst
+```
+
+On startup it downloads announced IPv4 prefixes for those ASNs from RIPEstat Announced Prefixes and caches the combined list at:
+
+```text
+config/routing/direct-asn-prefixes.zone
+```
+
+Those prefixes are loaded into `direct_asn4` and routed directly. This catches Russian-controlled platforms that use non-`.ru` domains or non-RU GeoIP ranges but announce traffic from their own ASNs. The default list is intentionally limited to platform, marketplace, banking, and content ASNs, not broad access-provider ASNs.
 
 The container also downloads antifilter lists on startup:
 
@@ -283,6 +296,7 @@ The route priority is:
 
 ```text
 antifilter IP/domain match -> upstream AWG
+curated ASN prefix match -> direct
 private/special networks -> direct
 .ru/.рф/.gov/.su DNS match -> direct
 RU GeoIP match -> direct
@@ -295,6 +309,8 @@ You can override the list URLs and DNS forwarders in `.env`:
 ANTIFILTER_IP_URL=https://antifilter.download/list/allyouneed.lst
 ANTIFILTER_DOMAINS_URL=https://antifilter.download/list/domains.lst
 SPLIT_DNS_UPSTREAMS=1.1.1.1,8.8.8.8
+DIRECT_ASNS_FILE=/config/routing/direct-asns.lst
+DIRECT_ASN_PREFIXES_FILE=/config/routing/direct-asn-prefixes.zone
 ```
 
 If you set `CLIENT_DNS` to an external resolver, domain-based split routing cannot see client DNS lookups. Leave `CLIENT_DNS` unset for the default relay-local DNS behavior.
@@ -382,6 +398,7 @@ sudo docker compose exec -T awg-relay ip rule show
 sudo docker compose exec -T awg-relay ip route show table 100
 sudo docker compose exec -T awg-relay iptables -t mangle -S AWG_SPLIT
 sudo docker compose exec -T awg-relay ipset list ru4 | sed -n '1,8p'
+sudo docker compose exec -T awg-relay ipset list direct_asn4 | sed -n '1,8p'
 sudo docker compose exec -T awg-relay ipset list vpn4 | sed -n '1,8p'
 sudo docker compose exec -T awg-relay ipset list direct_domains4 | sed -n '1,8p'
 sudo docker compose exec -T awg-relay ipset list vpn_domains4 | sed -n '1,8p'

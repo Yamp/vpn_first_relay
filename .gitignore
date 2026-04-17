@@ -4,6 +4,7 @@ config/server/
 config/clients/
 config/managed-clients/
 config/geoip/
+config/routing/
 config/admin.db
 .env
 *.log

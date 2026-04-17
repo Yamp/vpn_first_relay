@@ -25,6 +25,8 @@ services:
       ANTIFILTER_IP_URL: "${ANTIFILTER_IP_URL:-https://antifilter.download/list/allyouneed.lst}"
       ANTIFILTER_DOMAINS_URL: "${ANTIFILTER_DOMAINS_URL:-https://antifilter.download/list/domains.lst}"
       SPLIT_DNS_UPSTREAMS: "${SPLIT_DNS_UPSTREAMS:-1.1.1.1,8.8.8.8}"
+      DIRECT_ASNS_FILE: "${DIRECT_ASNS_FILE:-/config/routing/direct-asns.lst}"
+      DIRECT_ASN_PREFIXES_FILE: "${DIRECT_ASN_PREFIXES_FILE:-/config/routing/direct-asn-prefixes.zone}"
       ADMIN_USERNAME: "${ADMIN_USERNAME:-admin}"
       ADMIN_PASSWORD: "${ADMIN_PASSWORD:?set ADMIN_PASSWORD in .env or run scripts/install.sh}"
       ADMIN_LISTEN_HOST: "0.0.0.0"
