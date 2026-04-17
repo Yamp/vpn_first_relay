@@ -25,7 +25,8 @@ CLIENTS_DIR = CONFIG_DIR / "managed-clients"
 SERVER_IF = os.environ.get("SERVER_IF", "awg-relay")
 SERVER_PUBLIC_KEY = (CONFIG_DIR / "server" / "publickey").read_text().strip()
 PUBLIC_ENDPOINT = os.environ.get("PUBLIC_ENDPOINT", "CHANGE_ME_HOST_OR_IP:51820")
-CLIENT_DNS = os.environ.get("CLIENT_DNS", "1.1.1.1")
+SERVER_ADDRESS = os.environ.get("SERVER_ADDRESS", "10.77.0.1/24")
+CLIENT_DNS = os.environ.get("CLIENT_DNS") or str(ipaddress.ip_interface(SERVER_ADDRESS).ip)
 CLIENT_SUBNET = ipaddress.ip_network(os.environ.get("CLIENT_SUBNET", "10.77.0.0/24"), strict=False)
 SERVER_JC = os.environ.get("SERVER_JC", "4")
 SERVER_JMIN = os.environ.get("SERVER_JMIN", "8")
@@ -229,6 +230,19 @@ PersistentKeepalive = 25
 
 def config_path(client_id):
     return CLIENTS_DIR / f"{client_id}.conf"
+
+
+def write_client_config_file(client_id, private_key, address):
+    path = config_path(client_id)
+    path.write_text(client_config(private_key, address))
+    os.chmod(path, 0o600)
+
+
+def refresh_client_config_files():
+    with db() as conn:
+        rows = conn.execute("select id, private_key, address from clients").fetchall()
+    for row in rows:
+        write_client_config_file(row["id"], row["private_key"], row["address"])
 
 
 def add_peer(public_key, address):
@@ -574,8 +588,7 @@ class Handler(BaseHTTPRequestHandler):
                 (name, email, private_key, public_key, address, iso(created), iso(expires), daily_limit, total_limit, today_key()),
             )
             client_id = cur.lastrowid
-            config_path(client_id).write_text(client_config(private_key, address))
-            os.chmod(config_path(client_id), 0o600)
+            write_client_config_file(client_id, private_key, address)
             add_peer(public_key, address)
         redirect(self, f"/download/{client_id}")
 
@@ -645,6 +658,7 @@ def main():
     if not ADMIN_PASSWORD:
         print("WARNING: ADMIN_PASSWORD is empty; admin panel is not protected", flush=True)
     init_db()
+    refresh_client_config_files()
     restore_active_peers()
     threading.Thread(target=background_loop, daemon=True).start()
     host = os.environ.get("ADMIN_LISTEN_HOST", "0.0.0.0")

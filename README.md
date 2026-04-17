@@ -232,6 +232,73 @@ config/geoip/ru.zone
 
 On startup the cached list is reused if downloading fails. If no list is available, all public IPv4 traffic goes through the upstream AWG.
 
+## Domain and Blocklist Split
+
+In addition to GeoIP, the container starts an internal `dnsmasq` resolver. Managed client configs use the relay address as DNS by default, for example `10.77.0.1`. Existing managed config files are regenerated when the admin panel starts, so download them again after restarting the container.
+
+DNS answers for these TLDs are added to `direct_domains4` and go directly through this host without the upstream AWG:
+
+```text
+.ru
+.рф / .xn--p1ai
+.gov
+.su
+```
+
+These domains are also resolved directly:
+
+```text
+vk.com
+userapi.com
+vkuser.net
+vk-cdn.net
+yandex.com
+yandex.net
+yastatic.net
+yandexcloud.net
+telegram.org
+t.me
+my.com
+mail.com
+tinkoff.com
+sberbank.com
+alfa-bank.com
+wildberries.com
+ozon.com
+avito.com
+cian.com
+2gis.com
+```
+
+The container also downloads antifilter lists on startup:
+
+```text
+https://antifilter.download/list/allyouneed.lst
+https://antifilter.download/list/domains.lst
+```
+
+`allyouneed.lst` is loaded into `vpn4`. Domains from `domains.lst` are configured in `dnsmasq` so their resolved IPv4 addresses are added to `vpn_domains4`.
+
+The route priority is:
+
+```text
+antifilter IP/domain match -> upstream AWG
+private/special networks -> direct
+.ru/.рф/.gov/.su DNS match -> direct
+RU GeoIP match -> direct
+everything else -> upstream AWG
+```
+
+You can override the list URLs and DNS forwarders in `.env`:
+
+```text
+ANTIFILTER_IP_URL=https://antifilter.download/list/allyouneed.lst
+ANTIFILTER_DOMAINS_URL=https://antifilter.download/list/domains.lst
+SPLIT_DNS_UPSTREAMS=1.1.1.1,8.8.8.8
+```
+
+If you set `CLIENT_DNS` to an external resolver, domain-based split routing cannot see client DNS lookups. Leave `CLIENT_DNS` unset for the default relay-local DNS behavior.
+
 ## Automatic Updates
 
 Updates are handled by:
@@ -315,6 +382,9 @@ sudo docker compose exec -T awg-relay ip rule show
 sudo docker compose exec -T awg-relay ip route show table 100
 sudo docker compose exec -T awg-relay iptables -t mangle -S AWG_SPLIT
 sudo docker compose exec -T awg-relay ipset list ru4 | sed -n '1,8p'
+sudo docker compose exec -T awg-relay ipset list vpn4 | sed -n '1,8p'
+sudo docker compose exec -T awg-relay ipset list direct_domains4 | sed -n '1,8p'
+sudo docker compose exec -T awg-relay ipset list vpn_domains4 | sed -n '1,8p'
 ```
 
 ## Notes

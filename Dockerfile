@@ -33,6 +33,7 @@ RUN apt-get update \
         bash \
         ca-certificates \
         curl \
+        dnsmasq \
         iproute2 \
         ipset \
         iptables \
@@ -46,9 +47,10 @@ COPY --from=builder /src/amneziawg-tools/src/wg-quick/linux.bash /usr/local/bin/
 
 COPY admin /opt/awg-admin
 COPY scripts/entrypoint.sh /usr/local/bin/entrypoint.sh
+COPY scripts/routing-lists.sh /usr/local/bin/routing-lists.sh
 COPY config/upstream.conf /defaults/upstream.conf
 
-RUN chmod +x /usr/local/bin/amneziawg-go /usr/local/bin/awg /usr/local/bin/awg-quick /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/amneziawg-go /usr/local/bin/awg /usr/local/bin/awg-quick /usr/local/bin/entrypoint.sh /usr/local/bin/routing-lists.sh
 
 VOLUME ["/config"]
 EXPOSE 51820/udp
