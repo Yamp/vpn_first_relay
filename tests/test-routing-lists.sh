@@ -43,6 +43,7 @@ cat > "$domains_file" <<'DOMAINS'
 Example.COM
 *.Blocked.Example
 .leading-dot.example
+0f5b5df3-526c-4fb8-a421-e0647e59e4d4.саженцыроссии.рф
 https://url.example/path
 bad/domain
 DOMAINS
@@ -73,8 +74,12 @@ assert_not_contains_text "ipset=/t.me/direct_domains4" "$config_file"
 assert_contains "ipset=/example.com/vpn_domains4" "$config_file"
 assert_contains "ipset=/blocked.example/vpn_domains4" "$config_file"
 assert_contains "ipset=/leading-dot.example/vpn_domains4" "$config_file"
+assert_contains "ipset=/0f5b5df3-526c-4fb8-a421-e0647e59e4d4.xn--80akcja2ahpega0d9c.xn--p1ai/vpn_domains4" "$config_file"
 assert_not_contains_text "url.example" "$config_file"
 assert_not_contains_text "bad/domain" "$config_file"
+
+assert_contains 'ANTIFILTER_DOMAINS_URL="${ANTIFILTER_DOMAINS_URL:-}"' "$ROOT_DIR/scripts/entrypoint.sh"
+assert_contains '      ANTIFILTER_DOMAINS_URL: "${ANTIFILTER_DOMAINS_URL:-}"' "$ROOT_DIR/docker-compose.yml"
 
 ripe_json="$tmp_dir/ripe.json"
 cat > "$ripe_json" <<'JSON'

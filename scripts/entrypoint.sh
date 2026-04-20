@@ -18,7 +18,7 @@ CLIENT_DNS="${CLIENT_DNS:-$(ip_from_cidr "$SERVER_ADDRESS")}"
 PUBLIC_ENDPOINT="${PUBLIC_ENDPOINT:-CHANGE_ME_HOST_OR_IP:51820}"
 RU_ZONE_URL="${RU_ZONE_URL:-https://www.ipdeny.com/ipblocks/data/countries/ru.zone}"
 ANTIFILTER_IP_URL="${ANTIFILTER_IP_URL:-https://antifilter.download/list/allyouneed.lst}"
-ANTIFILTER_DOMAINS_URL="${ANTIFILTER_DOMAINS_URL:-https://antifilter.download/list/domains.lst}"
+ANTIFILTER_DOMAINS_URL="${ANTIFILTER_DOMAINS_URL:-}"
 SPLIT_DNS_UPSTREAMS="${SPLIT_DNS_UPSTREAMS:-1.1.1.1,8.8.8.8}"
 DIRECT_ASNS_FILE="${DIRECT_ASNS_FILE:-$CONFIG_DIR/routing/direct-asns.lst}"
 DIRECT_ASN_PREFIXES_FILE="${DIRECT_ASN_PREFIXES_FILE:-$CONFIG_DIR/routing/direct-asn-prefixes.zone}"
@@ -245,12 +245,18 @@ ipset flush direct_domains4
 ipset create vpn_domains4 hash:ip family inet timeout 86400 -exist
 ipset flush vpn_domains4
 
-download_cached_list "$ANTIFILTER_DOMAINS_URL" "$CONFIG_DIR/antifilter/domains.lst" "antifilter domains list"
+ANTIFILTER_DOMAINS_FILE=""
+if [[ -n "$ANTIFILTER_DOMAINS_URL" ]]; then
+  ANTIFILTER_DOMAINS_FILE="$CONFIG_DIR/antifilter/domains.lst"
+  download_cached_list "$ANTIFILTER_DOMAINS_URL" "$ANTIFILTER_DOMAINS_FILE" "antifilter domains list"
+else
+  echo "Antifilter domain list is disabled; only IP, GeoIP, ASN, and curated direct domain rules will be used." >&2
+fi
 write_dnsmasq_config \
   "$RUNTIME_DIR/dnsmasq.conf" \
   "$SERVER_LISTEN_ADDRESS" \
   "$SPLIT_DNS_UPSTREAMS" \
-  "$CONFIG_DIR/antifilter/domains.lst" \
+  "$ANTIFILTER_DOMAINS_FILE" \
   direct_domains4 \
   vpn_domains4
 dnsmasq --test --conf-file="$RUNTIME_DIR/dnsmasq.conf"

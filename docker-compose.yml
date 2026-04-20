@@ -23,7 +23,7 @@ services:
       PUBLIC_ENDPOINT: "${PUBLIC_ENDPOINT:-CHANGE_ME_HOST_OR_IP:51820}"
       RU_ZONE_URL: "${RU_ZONE_URL:-https://www.ipdeny.com/ipblocks/data/countries/ru.zone}"
       ANTIFILTER_IP_URL: "${ANTIFILTER_IP_URL:-https://antifilter.download/list/allyouneed.lst}"
-      ANTIFILTER_DOMAINS_URL: "${ANTIFILTER_DOMAINS_URL:-https://antifilter.download/list/domains.lst}"
+      ANTIFILTER_DOMAINS_URL: "${ANTIFILTER_DOMAINS_URL:-}"
       SPLIT_DNS_UPSTREAMS: "${SPLIT_DNS_UPSTREAMS:-1.1.1.1,8.8.8.8}"
       DIRECT_ASNS_FILE: "${DIRECT_ASNS_FILE:-/config/routing/direct-asns.lst}"
       DIRECT_ASN_PREFIXES_FILE: "${DIRECT_ASN_PREFIXES_FILE:-/config/routing/direct-asn-prefixes.zone}"

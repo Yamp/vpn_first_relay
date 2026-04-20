@@ -283,19 +283,27 @@ config/routing/direct-asn-prefixes.zone
 
 Those prefixes are loaded into `direct_asn4` and routed directly. This catches Russian-controlled platforms that use non-`.ru` domains or non-RU GeoIP ranges but announce traffic from their own ASNs. The default list is intentionally limited to platform, marketplace, banking, and content ASNs, not broad access-provider ASNs.
 
-The container also downloads antifilter lists on startup:
+The container downloads the antifilter IP list on startup:
 
 ```text
 https://antifilter.download/list/allyouneed.lst
-https://antifilter.download/list/domains.lst
 ```
 
-`allyouneed.lst` is loaded into `vpn4`. Domains from `domains.lst` are configured in `dnsmasq` so their resolved IPv4 addresses are added to `vpn_domains4`.
+`allyouneed.lst` is loaded into `vpn4`.
+
+The antifilter domain list is disabled by default because it is very large and makes relay-local DNS heavier. To opt in, set:
+
+```text
+ANTIFILTER_DOMAINS_URL=https://antifilter.download/list/domains.lst
+```
+
+When enabled, domains from `domains.lst` are configured in `dnsmasq` so their resolved IPv4 addresses are added to `vpn_domains4`.
 
 The route priority is:
 
 ```text
-antifilter IP/domain match -> upstream AWG
+antifilter IP match -> upstream AWG
+antifilter domain match, if enabled -> upstream AWG
 curated ASN prefix match -> direct
 private/special networks -> direct
 .ru/.рф/.gov/.su DNS match -> direct
@@ -307,7 +315,7 @@ You can override the list URLs and DNS forwarders in `.env`:
 
 ```text
 ANTIFILTER_IP_URL=https://antifilter.download/list/allyouneed.lst
-ANTIFILTER_DOMAINS_URL=https://antifilter.download/list/domains.lst
+ANTIFILTER_DOMAINS_URL=
 SPLIT_DNS_UPSTREAMS=1.1.1.1,8.8.8.8
 DIRECT_ASNS_FILE=/config/routing/direct-asns.lst
 DIRECT_ASN_PREFIXES_FILE=/config/routing/direct-asn-prefixes.zone

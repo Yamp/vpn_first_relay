@@ -65,6 +65,64 @@ normalize_dnsmasq_domain() {
   printf '%s\n' "$domain"
 }
 
+emit_dnsmasq_ipset_domains() {
+  local domains_path="$1"
+  local set_name="$2"
+
+  python3 - "$domains_path" "$set_name" <<'PY'
+import re
+import sys
+
+domains_path = sys.argv[1]
+set_name = sys.argv[2]
+valid_ascii_domain = re.compile(r"^[a-z0-9.-]+$")
+
+
+def normalize_domain(line):
+    domain = line.split("#", 1)[0].rstrip("\r\n")
+    domain = domain.replace("\t", " ").strip().lower()
+    if domain.startswith("*."):
+        domain = domain[2:]
+    domain = domain.strip(".")
+
+    if (
+        not domain
+        or "://" in domain
+        or "/" in domain
+        or " " in domain
+        or "." not in domain
+    ):
+        return None
+
+    try:
+        domain = domain.encode("idna").decode("ascii").lower()
+    except UnicodeError:
+        return None
+
+    if len(domain) > 253 or not valid_ascii_domain.fullmatch(domain):
+        return None
+
+    labels = domain.split(".")
+    if any(
+        not label
+        or len(label) > 63
+        or label.startswith("-")
+        or label.endswith("-")
+        for label in labels
+    ):
+        return None
+
+    return domain
+
+
+with open(domains_path, encoding="utf-8", errors="ignore") as domains_file:
+    for line in domains_file:
+        domain = normalize_domain(line)
+        if domain:
+            print(f"ipset=/{domain}/{set_name}")
+PY
+}
+
 write_dnsmasq_config() {
   local output_path="$1"
   local listen_address="$2"
@@ -129,12 +187,7 @@ write_dnsmasq_config() {
     IFS="$old_ifs"
 
     if [[ -s "$blocked_domains_path" ]]; then
-      local line domain
-      while IFS= read -r line || [[ -n "$line" ]]; do
-        if domain="$(normalize_dnsmasq_domain "$line")"; then
-          printf 'ipset=/%s/%s\n' "$domain" "$vpn_domain_set"
-        fi
-      done < "$blocked_domains_path"
+      emit_dnsmasq_ipset_domains "$blocked_domains_path" "$vpn_domain_set"
     fi
   } > "$output_path"
 }
