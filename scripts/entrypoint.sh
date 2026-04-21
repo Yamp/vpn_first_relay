@@ -234,6 +234,7 @@ mkdir -p "$RULES_DIR"
 
 python3 "$SINGBOX_RENDERER" \
   --config-out "$RUNTIME_DIR/sing-box.json" \
+  --priority-direct-domains-out "$RULES_DIR/priority-direct-domains.json" \
   --direct-domains-out "$RULES_DIR/direct-domains.json" \
   --vpn-domains-out "$RULES_DIR/vpn-domains.json" \
   --ru-ip-out "$RULES_DIR/ru-ip.json" \
@@ -250,6 +251,7 @@ python3 "$SINGBOX_RENDERER" \
   --direct-asn-prefixes "$DIRECT_ASN_PREFIXES_FILE"
 
 for source_rule_set in \
+  "$RULES_DIR/priority-direct-domains.json" \
   "$RULES_DIR/direct-domains.json" \
   "$RULES_DIR/vpn-domains.json" \
   "$RULES_DIR/ru-ip.json" \

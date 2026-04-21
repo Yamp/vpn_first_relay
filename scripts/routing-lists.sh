@@ -174,7 +174,6 @@ write_dnsmasq_config() {
     avito.com
     cian.com
     2gis.com
-    relay-api.eu.2gis.com
   )
 
   {

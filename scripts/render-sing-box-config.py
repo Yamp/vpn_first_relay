@@ -29,7 +29,6 @@ DEFAULT_DIRECT_DOMAIN_SUFFIXES = [
     "avito.com",
     "cian.com",
     "2gis.com",
-    "relay-api.eu.2gis.com",
 ]
 
 LOCAL_IPV4_CIDRS = [
@@ -55,6 +54,7 @@ VALID_ASCII_DOMAIN = re.compile(r"^[a-z0-9.-]+$")
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--config-out", required=True)
+    parser.add_argument("--priority-direct-domains-out", required=True)
     parser.add_argument("--direct-domains-out", required=True)
     parser.add_argument("--vpn-domains-out", required=True)
     parser.add_argument("--ru-ip-out", required=True)
@@ -169,6 +169,10 @@ def domain_rule_set(domains):
     return {"version": 3, "rules": [{"domain_suffix": domains}]}
 
 
+def select_priority_direct_domains(domains):
+    return [domain for domain in domains if "." in domain]
+
+
 def ip_rule_set(cidrs):
     if not cidrs:
         return {"version": 3, "rules": []}
@@ -261,6 +265,12 @@ def build_config(args, dns_upstreams):
                 },
                 {
                     "type": "local",
+                    "tag": "priority-direct-domains",
+                    "format": "binary",
+                    "path": binary_path(args.priority_direct_domains_out),
+                },
+                {
+                    "type": "local",
                     "tag": "direct-domains",
                     "format": "binary",
                     "path": binary_path(args.direct_domains_out),
@@ -276,6 +286,11 @@ def build_config(args, dns_upstreams):
                 {"port": 53, "action": "hijack-dns"},
                 {"action": "sniff", "timeout": "300ms"},
                 {"rule_set": ["local-ip"], "action": "route", "outbound": "local-out"},
+                {
+                    "rule_set": ["priority-direct-domains"],
+                    "action": "route",
+                    "outbound": "direct-out",
+                },
                 {
                     "rule_set": ["vpn-ip", "vpn-domains"],
                     "action": "route",
@@ -299,12 +314,14 @@ def main():
         raise SystemExit("at least one DNS upstream is required")
 
     direct_domains = load_domain_suffixes([], DEFAULT_DIRECT_DOMAIN_SUFFIXES)
+    priority_direct_domains = select_priority_direct_domains(direct_domains)
     vpn_domains = load_domain_suffixes([args.antifilter_domains])
     ru_cidrs = load_ipv4_cidrs([args.ru_zone])
     vpn_cidrs = load_ipv4_cidrs([args.antifilter_ip])
     direct_asn_cidrs = load_ipv4_cidrs([args.direct_asn_prefixes])
     local_cidrs = load_ipv4_cidrs([], LOCAL_IPV4_CIDRS)
 
+    write_json(args.priority_direct_domains_out, domain_rule_set(priority_direct_domains))
     write_json(args.direct_domains_out, domain_rule_set(direct_domains))
     write_json(args.vpn_domains_out, domain_rule_set(vpn_domains))
     write_json(args.ru_ip_out, ip_rule_set(ru_cidrs))

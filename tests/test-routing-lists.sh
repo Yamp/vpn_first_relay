@@ -120,6 +120,7 @@ PREFIXES
 
 python3 "$SINGBOX_RENDERER" \
   --config-out "$tmp_dir/sing-box.json" \
+  --priority-direct-domains-out "$tmp_dir/priority-direct-domains.json" \
   --direct-domains-out "$tmp_dir/direct-domains.json" \
   --vpn-domains-out "$tmp_dir/vpn-domains.json" \
   --ru-ip-out "$tmp_dir/ru-ip.json" \
@@ -142,6 +143,7 @@ import sys
 tmp_dir = pathlib.Path(sys.argv[1])
 
 direct_domains = json.loads((tmp_dir / "direct-domains.json").read_text())
+priority_direct_domains = json.loads((tmp_dir / "priority-direct-domains.json").read_text())
 vpn_domains = json.loads((tmp_dir / "vpn-domains.json").read_text())
 ru_ip = json.loads((tmp_dir / "ru-ip.json").read_text())
 vpn_ip = json.loads((tmp_dir / "vpn-ip.json").read_text())
@@ -150,7 +152,9 @@ local_ip = json.loads((tmp_dir / "local-ip.json").read_text())
 config = json.loads((tmp_dir / "sing-box.json").read_text())
 
 assert direct_domains["rules"][0]["domain_suffix"][:4] == ["2gis.com", "alfa-bank.com", "avito.com", "cian.com"]
-assert "relay-api.eu.2gis.com" in direct_domains["rules"][0]["domain_suffix"]
+assert priority_direct_domains["rules"][0]["domain_suffix"][:4] == ["2gis.com", "alfa-bank.com", "avito.com", "cian.com"]
+assert "2gis.com" in priority_direct_domains["rules"][0]["domain_suffix"]
+assert "ru" not in priority_direct_domains["rules"][0]["domain_suffix"]
 assert "ru" in direct_domains["rules"][0]["domain_suffix"]
 assert "xn--p1ai" in direct_domains["rules"][0]["domain_suffix"]
 assert "example.com" in vpn_domains["rules"][0]["domain_suffix"]
@@ -175,6 +179,9 @@ assert config["outbounds"][2]["bind_interface"] == "awg-up"
 assert config["route"]["final"] == "vpn-out"
 assert config["route"]["rules"][0]["action"] == "hijack-dns"
 assert config["route"]["rules"][1]["action"] == "sniff"
+assert config["route"]["rules"][2]["rule_set"] == ["local-ip"]
+assert config["route"]["rules"][3]["rule_set"] == ["priority-direct-domains"]
+assert config["route"]["rules"][4]["rule_set"] == ["vpn-ip", "vpn-domains"]
 PY
 
 echo "routing-lists tests passed"
