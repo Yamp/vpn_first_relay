@@ -3,6 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 ROUTING_LIB="${ROUTING_LIB:-${SCRIPT_DIR}/routing-lists.sh}"
+SINGBOX_RENDERER="${SINGBOX_RENDERER:-/usr/local/bin/render-sing-box-config.py}"
 # shellcheck source=scripts/routing-lists.sh
 . "$ROUTING_LIB"
 
@@ -14,7 +15,6 @@ SERVER_PORT="${SERVER_PORT:-51820}"
 SERVER_ADDRESS="${SERVER_ADDRESS:-10.77.0.1/24}"
 CLIENT_SUBNET="${CLIENT_SUBNET:-10.77.0.0/24}"
 CLIENT_ADDRESS="${CLIENT_ADDRESS:-10.77.0.2/32}"
-CLIENT_DNS="${CLIENT_DNS:-$(ip_from_cidr "$SERVER_ADDRESS")}"
 PUBLIC_ENDPOINT="${PUBLIC_ENDPOINT:-CHANGE_ME_HOST_OR_IP:51820}"
 RU_ZONE_URL="${RU_ZONE_URL:-https://www.ipdeny.com/ipblocks/data/countries/ru.zone}"
 ANTIFILTER_IP_URL="${ANTIFILTER_IP_URL:-https://antifilter.download/list/allyouneed.lst}"
@@ -22,6 +22,7 @@ ANTIFILTER_DOMAINS_URL="${ANTIFILTER_DOMAINS_URL:-}"
 SPLIT_DNS_UPSTREAMS="${SPLIT_DNS_UPSTREAMS:-1.1.1.1,8.8.8.8}"
 DIRECT_ASNS_FILE="${DIRECT_ASNS_FILE:-$CONFIG_DIR/routing/direct-asns.lst}"
 DIRECT_ASN_PREFIXES_FILE="${DIRECT_ASN_PREFIXES_FILE:-$CONFIG_DIR/routing/direct-asn-prefixes.zone}"
+SING_BOX_TUN_ADDRESS="${SING_BOX_TUN_ADDRESS:-172.19.0.1/30}"
 
 SERVER_JC="${SERVER_JC:-4}"
 SERVER_JMIN="${SERVER_JMIN:-8}"
@@ -35,9 +36,9 @@ SERVER_H2="${SERVER_H2:-123456702}"
 SERVER_H3="${SERVER_H3:-123456703}"
 SERVER_H4="${SERVER_H4:-123456704}"
 
-TABLE_ID="${TABLE_ID:-100}"
-FW_MARK="${FW_MARK:-0x1}"
-SERVER_LISTEN_ADDRESS="$(ip_from_cidr "$SERVER_ADDRESS")"
+DEFAULT_CLIENT_DNS="$(first_csv_value "$SPLIT_DNS_UPSTREAMS" || true)"
+CLIENT_DNS="${CLIENT_DNS:-${DEFAULT_CLIENT_DNS:-$(ip_from_cidr "$SERVER_ADDRESS")}}"
+export CLIENT_DNS
 
 mkdir -p "$CONFIG_DIR" "$RUNTIME_DIR" "$CONFIG_DIR/server" "$CONFIG_DIR/clients/client1" "$CONFIG_DIR/geoip" "$CONFIG_DIR/antifilter" "$CONFIG_DIR/routing"
 
@@ -188,9 +189,10 @@ cleanup() {
   if [[ -n "${ADMIN_PID:-}" ]]; then
     kill "$ADMIN_PID" >/dev/null 2>&1 || true
   fi
-  if [[ -n "${DNSMASQ_PID:-}" ]]; then
-    kill "$DNSMASQ_PID" >/dev/null 2>&1 || true
+  if [[ -n "${SING_BOX_PID:-}" ]]; then
+    kill "$SING_BOX_PID" >/dev/null 2>&1 || true
   fi
+  ip link del sb-tun >/dev/null 2>&1 || true
   ip link del "$SERVER_IF" >/dev/null 2>&1 || true
   ip link del "$UPSTREAM_IF" >/dev/null 2>&1 || true
 }
@@ -202,48 +204,22 @@ start_awg "$SERVER_IF" "$RUNTIME_DIR/server.awg" "$SERVER_ADDRESS" "1280"
 
 sysctl -w net.ipv4.ip_forward=1 >/dev/null 2>&1 || true
 
-ipset create ru4 hash:net family inet -exist
-ipset flush ru4
 download_cached_list "$RU_ZONE_URL" "$CONFIG_DIR/geoip/ru.zone" "RU geoip list"
-if [[ -s "$CONFIG_DIR/geoip/ru.zone" ]]; then
-  load_ipset_file ru4 "$CONFIG_DIR/geoip/ru.zone"
-else
+if [[ ! -s "$CONFIG_DIR/geoip/ru.zone" ]]; then
   echo "WARNING: RU geoip list is empty; all public IPv4 destinations will go through upstream AWG." >&2
 fi
 
-ipset create vpn4 hash:net family inet -exist
-ipset flush vpn4
 download_cached_list "$ANTIFILTER_IP_URL" "$CONFIG_DIR/antifilter/allyouneed.lst" "antifilter IP list"
-if [[ -s "$CONFIG_DIR/antifilter/allyouneed.lst" ]]; then
-  load_ipset_file vpn4 "$CONFIG_DIR/antifilter/allyouneed.lst"
-else
+if [[ ! -s "$CONFIG_DIR/antifilter/allyouneed.lst" ]]; then
   echo "WARNING: antifilter IP list is empty; only GeoIP, TLD, and domain DNS rules will be used." >&2
 fi
 
-ipset create direct4 hash:net family inet -exist
-ipset flush direct4
-for cidr in \
-  0.0.0.0/8 10.0.0.0/8 100.64.0.0/10 127.0.0.0/8 169.254.0.0/16 \
-  172.16.0.0/12 192.0.0.0/24 192.0.2.0/24 192.168.0.0/16 \
-  198.18.0.0/15 198.51.100.0/24 203.0.113.0/24 224.0.0.0/4 240.0.0.0/4; do
-  ipset add direct4 "$cidr" -exist
-done
-
 write_default_direct_asns_file "$DIRECT_ASNS_FILE"
 prune_deprecated_direct_asns_file "$DIRECT_ASNS_FILE"
-ipset create direct_asn4 hash:net family inet -exist
-ipset flush direct_asn4
 refresh_direct_asn_prefixes "$DIRECT_ASNS_FILE" "$DIRECT_ASN_PREFIXES_FILE"
-if [[ -s "$DIRECT_ASN_PREFIXES_FILE" ]]; then
-  load_ipset_file direct_asn4 "$DIRECT_ASN_PREFIXES_FILE"
-else
+if [[ ! -s "$DIRECT_ASN_PREFIXES_FILE" ]]; then
   echo "WARNING: direct ASN prefix list is empty; ASN-based direct routing is disabled." >&2
 fi
-
-ipset create direct_domains4 hash:ip family inet timeout 86400 -exist
-ipset flush direct_domains4
-ipset create vpn_domains4 hash:ip family inet timeout 86400 -exist
-ipset flush vpn_domains4
 
 ANTIFILTER_DOMAINS_FILE=""
 if [[ -n "$ANTIFILTER_DOMAINS_URL" ]]; then
@@ -252,41 +228,40 @@ if [[ -n "$ANTIFILTER_DOMAINS_URL" ]]; then
 else
   echo "Antifilter domain list is disabled; only IP, GeoIP, ASN, and curated direct domain rules will be used." >&2
 fi
-write_dnsmasq_config \
-  "$RUNTIME_DIR/dnsmasq.conf" \
-  "$SERVER_LISTEN_ADDRESS" \
-  "$SPLIT_DNS_UPSTREAMS" \
-  "$ANTIFILTER_DOMAINS_FILE" \
-  direct_domains4 \
-  vpn_domains4
-dnsmasq --test --conf-file="$RUNTIME_DIR/dnsmasq.conf"
-dnsmasq --keep-in-foreground --conf-file="$RUNTIME_DIR/dnsmasq.conf" &
-DNSMASQ_PID="$!"
 
-ip rule del fwmark "$FW_MARK" table "$TABLE_ID" >/dev/null 2>&1 || true
-ip rule add fwmark "$FW_MARK" table "$TABLE_ID" priority 100
-ip route replace default dev "$UPSTREAM_IF" table "$TABLE_ID"
+RULES_DIR="$RUNTIME_DIR/sing-box"
+mkdir -p "$RULES_DIR"
 
-iptables -t mangle -N AWG_SPLIT >/dev/null 2>&1 || true
-iptables -t mangle -F AWG_SPLIT
-iptables -t mangle -N AWG_MARK_VPN >/dev/null 2>&1 || true
-iptables -t mangle -F AWG_MARK_VPN
-iptables -t mangle -D PREROUTING -i "$SERVER_IF" -s "$CLIENT_SUBNET" -j AWG_SPLIT >/dev/null 2>&1 || true
-iptables -t mangle -A PREROUTING -i "$SERVER_IF" -s "$CLIENT_SUBNET" -j AWG_SPLIT
-iptables -t mangle -A AWG_MARK_VPN -j MARK --set-mark "$FW_MARK"
-iptables -t mangle -A AWG_MARK_VPN -j RETURN
-iptables -t mangle -A AWG_SPLIT -m set --match-set vpn4 dst -j AWG_MARK_VPN
-iptables -t mangle -A AWG_SPLIT -m set --match-set vpn_domains4 dst -j AWG_MARK_VPN
-iptables -t mangle -A AWG_SPLIT -m set --match-set direct_asn4 dst -j RETURN
-iptables -t mangle -A AWG_SPLIT -m set --match-set direct4 dst -j RETURN
-iptables -t mangle -A AWG_SPLIT -m set --match-set direct_domains4 dst -j RETURN
-iptables -t mangle -A AWG_SPLIT -m set --match-set ru4 dst -j RETURN
-iptables -t mangle -A AWG_SPLIT -j AWG_MARK_VPN
+python3 "$SINGBOX_RENDERER" \
+  --config-out "$RUNTIME_DIR/sing-box.json" \
+  --direct-domains-out "$RULES_DIR/direct-domains.json" \
+  --vpn-domains-out "$RULES_DIR/vpn-domains.json" \
+  --ru-ip-out "$RULES_DIR/ru-ip.json" \
+  --vpn-ip-out "$RULES_DIR/vpn-ip.json" \
+  --direct-asn-ip-out "$RULES_DIR/direct-asn-ip.json" \
+  --local-ip-out "$RULES_DIR/local-ip.json" \
+  --server-if "$SERVER_IF" \
+  --upstream-if "$UPSTREAM_IF" \
+  --tun-address "$SING_BOX_TUN_ADDRESS" \
+  --dns-upstreams "$SPLIT_DNS_UPSTREAMS" \
+  --antifilter-domains "$ANTIFILTER_DOMAINS_FILE" \
+  --ru-zone "$CONFIG_DIR/geoip/ru.zone" \
+  --antifilter-ip "$CONFIG_DIR/antifilter/allyouneed.lst" \
+  --direct-asn-prefixes "$DIRECT_ASN_PREFIXES_FILE"
 
-iptables -t nat -D POSTROUTING -s "$CLIENT_SUBNET" -m mark --mark "$FW_MARK" -o "$UPSTREAM_IF" -j MASQUERADE >/dev/null 2>&1 || true
-iptables -t nat -D POSTROUTING -s "$CLIENT_SUBNET" -o eth0 -j MASQUERADE >/dev/null 2>&1 || true
-iptables -t nat -A POSTROUTING -s "$CLIENT_SUBNET" -m mark --mark "$FW_MARK" -o "$UPSTREAM_IF" -j MASQUERADE
-iptables -t nat -A POSTROUTING -s "$CLIENT_SUBNET" -o eth0 -j MASQUERADE
+for source_rule_set in \
+  "$RULES_DIR/direct-domains.json" \
+  "$RULES_DIR/vpn-domains.json" \
+  "$RULES_DIR/ru-ip.json" \
+  "$RULES_DIR/vpn-ip.json" \
+  "$RULES_DIR/direct-asn-ip.json" \
+  "$RULES_DIR/local-ip.json"; do
+  sing-box rule-set compile --output "${source_rule_set%.json}.srs" "$source_rule_set"
+done
+
+sing-box check -c "$RUNTIME_DIR/sing-box.json"
+sing-box run -c "$RUNTIME_DIR/sing-box.json" &
+SING_BOX_PID="$!"
 
 echo "AWG relay is running."
 python3 /opt/awg-admin/app.py &

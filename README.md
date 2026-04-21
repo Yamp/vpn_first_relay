@@ -5,7 +5,7 @@ Docker relay with two AmneziaWG interfaces:
 - `awg-relay` accepts client connections.
 - `awg-up` connects to the upstream AWG server from `config/upstream.conf`.
 - IPv4 traffic to Russian networks is NATed directly through this host.
-- Other public IPv4 traffic is policy-routed through `awg-up`.
+- Other public IPv4 traffic is sent through `awg-up`.
 
 The image is built from the official Amnezia repositories:
 
@@ -235,9 +235,11 @@ On startup the cached list is reused if downloading fails. If no list is availab
 
 ## Domain and Blocklist Split
 
-In addition to GeoIP, the container starts an internal `dnsmasq` resolver. Managed client configs use the relay address as DNS by default, for example `10.77.0.1`. Existing managed config files are regenerated when the admin panel starts, so download them again after restarting the container.
+In addition to GeoIP, the container starts `sing-box` in transparent `tun` mode. Domain-based split now happens inside `sing-box` rule-sets instead of through `dnsmasq` + `ipset`, so the relay no longer needs to resolve every matched domain locally before routing traffic.
 
-DNS answers for these TLDs are added to `direct_domains4` and go directly through this host without the upstream AWG:
+Managed client configs use the first value from `SPLIT_DNS_UPSTREAMS` as their DNS hint by default, for example `1.1.1.1`. Existing managed config files are regenerated when the admin panel starts, so download them again after restarting the container.
+
+These suffixes are routed directly without the upstream AWG:
 
 ```text
 .ru
@@ -246,7 +248,7 @@ DNS answers for these TLDs are added to `direct_domains4` and go directly throug
 .su
 ```
 
-These domains are also resolved directly:
+These domains are also routed directly:
 
 ```text
 vk.com
@@ -281,7 +283,7 @@ On startup it downloads announced IPv4 prefixes for those ASNs from RIPEstat Ann
 config/routing/direct-asn-prefixes.zone
 ```
 
-Those prefixes are loaded into `direct_asn4` and routed directly. This catches Russian-controlled platforms that use non-`.ru` domains or non-RU GeoIP ranges but announce traffic from their own ASNs. The default list is intentionally limited to platform, marketplace, banking, and content ASNs, not broad access-provider ASNs.
+Those prefixes are loaded into a `sing-box` rule-set and routed directly. This catches Russian-controlled platforms that use non-`.ru` domains or non-RU GeoIP ranges but announce traffic from their own ASNs. The default list is intentionally limited to platform, marketplace, banking, and content ASNs, not broad access-provider ASNs.
 
 The container downloads the antifilter IP list on startup:
 
@@ -289,24 +291,29 @@ The container downloads the antifilter IP list on startup:
 https://antifilter.download/list/allyouneed.lst
 ```
 
-`allyouneed.lst` is loaded into `vpn4`.
+`allyouneed.lst` is loaded into a `sing-box` IP rule-set that is sent through the upstream AWG.
 
-The antifilter domain list is disabled by default because it is very large and makes relay-local DNS heavier. To opt in, set:
+The antifilter domain list is disabled by default because it is very large. To opt in, set:
 
 ```text
 ANTIFILTER_DOMAINS_URL=https://antifilter.download/list/domains.lst
 ```
 
-When enabled, domains from `domains.lst` are configured in `dnsmasq` so their resolved IPv4 addresses are added to `vpn_domains4`.
+When enabled, domains from `domains.lst` are compiled into a `sing-box` domain rule-set and routed through the upstream AWG.
+
+`sing-box` uses two signals for domain-based decisions:
+
+- reverse mapping from intercepted plain DNS (`53/tcp` and `53/udp`);
+- protocol sniffing for HTTP/TLS/QUIC when the client did not use plain DNS through the relay.
 
 The route priority is:
 
 ```text
 antifilter IP match -> upstream AWG
 antifilter domain match, if enabled -> upstream AWG
+private/special networks -> direct (local system routing)
 curated ASN prefix match -> direct
-private/special networks -> direct
-.ru/.рф/.gov/.su DNS match -> direct
+.ru/.рф/.gov/.su and curated direct domains -> direct
 RU GeoIP match -> direct
 everything else -> upstream AWG
 ```
@@ -319,9 +326,10 @@ ANTIFILTER_DOMAINS_URL=
 SPLIT_DNS_UPSTREAMS=1.1.1.1,8.8.8.8
 DIRECT_ASNS_FILE=/config/routing/direct-asns.lst
 DIRECT_ASN_PREFIXES_FILE=/config/routing/direct-asn-prefixes.zone
+SING_BOX_TUN_ADDRESS=172.19.0.1/30
 ```
 
-If you set `CLIENT_DNS` to an external resolver, domain-based split routing cannot see client DNS lookups. Leave `CLIENT_DNS` unset for the default relay-local DNS behavior.
+If you leave `CLIENT_DNS` unset, the first `SPLIT_DNS_UPSTREAMS` value is written into managed client configs. You can still override `CLIENT_DNS` manually if you want a different resolver hint.
 
 ## Automatic Updates
 
@@ -402,18 +410,14 @@ sudo docker compose exec -T awg-relay awg show
 Split routing:
 
 ```bash
-sudo docker compose exec -T awg-relay ip rule show
-sudo docker compose exec -T awg-relay ip route show table 100
-sudo docker compose exec -T awg-relay iptables -t mangle -S AWG_SPLIT
-sudo docker compose exec -T awg-relay ipset list ru4 | sed -n '1,8p'
-sudo docker compose exec -T awg-relay ipset list direct_asn4 | sed -n '1,8p'
-sudo docker compose exec -T awg-relay ipset list vpn4 | sed -n '1,8p'
-sudo docker compose exec -T awg-relay ipset list direct_domains4 | sed -n '1,8p'
-sudo docker compose exec -T awg-relay ipset list vpn_domains4 | sed -n '1,8p'
+sudo docker compose exec -T awg-relay sing-box check -c /run/awg-relay/sing-box.json
+sudo docker compose exec -T awg-relay sed -n '1,220p' /run/awg-relay/sing-box.json
+sudo docker compose exec -T awg-relay ls -1 /run/awg-relay/sing-box
+sudo docker compose exec -T awg-relay nft list ruleset
 ```
 
 ## Notes
 
 This setup handles IPv4 split routing. IPv6 is disabled in `docker-compose.yml` because the supplied upstream config has only an IPv4 interface address.
 
-The container needs `/dev/net/tun`, `NET_ADMIN`, and `NET_RAW` to create TUN devices, manage routing, and install iptables/ipset rules.
+The container needs `/dev/net/tun`, `NET_ADMIN`, and `NET_RAW` to create TUN devices, manage routing, and install `nftables` rules for `sing-box` auto-redirect.

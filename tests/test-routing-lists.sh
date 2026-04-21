@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=../scripts/routing-lists.sh
 . "$ROOT_DIR/scripts/routing-lists.sh"
+SINGBOX_RENDERER="$ROOT_DIR/scripts/render-sing-box-config.py"
 
 fail() {
   echo "FAIL: $*" >&2
@@ -33,6 +34,7 @@ tmp_dir="$(mktemp -d)"
 trap 'rm -rf "$tmp_dir"' EXIT
 
 assert_eq "10.77.0.1" "$(ip_from_cidr "10.77.0.1/24")" "ip_from_cidr strips a CIDR suffix"
+assert_eq "1.1.1.1" "$(first_csv_value " 1.1.1.1 , 8.8.8.8 ")" "first_csv_value returns the first non-empty CSV item"
 assert_eq "AS13238" "$(normalize_asn " as13238 # Yandex")" "normalize_asn canonicalizes ASN values"
 assert_eq "https://stat.ripe.net/data/announced-prefixes/data.json?resource=AS13238&min_peers_seeing=1" "$(ripe_announced_prefixes_url "13238")" "ripe_announced_prefixes_url builds announced-prefixes API URL"
 assert_eq "https://stat.ripe.net/data/announced-prefixes/data.json?resource=AS13238&min_peers_seeing=1" "$(RIPESTAT_BASE_URL="https://stat.ripe.net/" ripe_announced_prefixes_url "AS13238")" "ripe_announced_prefixes_url strips trailing slash"
@@ -48,38 +50,10 @@ https://url.example/path
 bad/domain
 DOMAINS
 
-config_file="$tmp_dir/dnsmasq.conf"
-write_dnsmasq_config "$config_file" "10.77.0.1" "1.1.1.1,8.8.8.8" "$domains_file" "direct_domains4" "vpn_domains4"
-
-assert_contains "listen-address=10.77.0.1" "$config_file"
-assert_contains "user=root" "$config_file"
-assert_contains "filter-AAAA" "$config_file"
-assert_contains "server=1.1.1.1" "$config_file"
-assert_contains "server=8.8.8.8" "$config_file"
-assert_contains "ipset=/ru/direct_domains4" "$config_file"
-assert_contains "ipset=/xn--p1ai/direct_domains4" "$config_file"
-assert_contains "ipset=/gov/direct_domains4" "$config_file"
-assert_contains "ipset=/su/direct_domains4" "$config_file"
-for domain in \
-  vk.com userapi.com vkuser.net vk-cdn.net \
-  yandex.com yandex.net yastatic.net yandexcloud.net \
-  my.com mail.com \
-  tinkoff.com sberbank.com alfa-bank.com \
-  wildberries.com ozon.com \
-  avito.com cian.com 2gis.com; do
-  assert_contains "ipset=/${domain}/direct_domains4" "$config_file"
-done
-assert_not_contains_text "ipset=/telegram.org/direct_domains4" "$config_file"
-assert_not_contains_text "ipset=/t.me/direct_domains4" "$config_file"
-assert_contains "ipset=/example.com/vpn_domains4" "$config_file"
-assert_contains "ipset=/blocked.example/vpn_domains4" "$config_file"
-assert_contains "ipset=/leading-dot.example/vpn_domains4" "$config_file"
-assert_contains "ipset=/0f5b5df3-526c-4fb8-a421-e0647e59e4d4.xn--80akcja2ahpega0d9c.xn--p1ai/vpn_domains4" "$config_file"
-assert_not_contains_text "url.example" "$config_file"
-assert_not_contains_text "bad/domain" "$config_file"
-
 assert_contains 'ANTIFILTER_DOMAINS_URL="${ANTIFILTER_DOMAINS_URL:-}"' "$ROOT_DIR/scripts/entrypoint.sh"
 assert_contains '      ANTIFILTER_DOMAINS_URL: "${ANTIFILTER_DOMAINS_URL:-}"' "$ROOT_DIR/docker-compose.yml"
+assert_contains 'SING_BOX_TUN_ADDRESS="${SING_BOX_TUN_ADDRESS:-172.19.0.1/30}"' "$ROOT_DIR/scripts/entrypoint.sh"
+assert_contains '      SING_BOX_TUN_ADDRESS: "${SING_BOX_TUN_ADDRESS:-172.19.0.1/30}"' "$ROOT_DIR/docker-compose.yml"
 
 ripe_json="$tmp_dir/ripe.json"
 cat > "$ripe_json" <<'JSON'
@@ -125,5 +99,80 @@ assert_contains "AS57073 # Wildberries" "$direct_asns"
 for asn in AS62041 AS62014 AS59930 AS44907 AS211157; do
   assert_not_contains_text "$asn" "$direct_asns"
 done
+
+ru_zone="$tmp_dir/ru.zone"
+cat > "$ru_zone" <<'ZONE'
+5.255.255.0/24
+bad-prefix
+ZONE
+
+vpn_ip_list="$tmp_dir/allyouneed.lst"
+cat > "$vpn_ip_list" <<'IPS'
+1.1.1.0/24
+8.8.8.0/24
+IPS
+
+direct_asn_prefixes="$tmp_dir/direct-asn-prefixes.zone"
+cat > "$direct_asn_prefixes" <<'PREFIXES'
+87.250.250.0/24
+bad-prefix
+PREFIXES
+
+python3 "$SINGBOX_RENDERER" \
+  --config-out "$tmp_dir/sing-box.json" \
+  --direct-domains-out "$tmp_dir/direct-domains.json" \
+  --vpn-domains-out "$tmp_dir/vpn-domains.json" \
+  --ru-ip-out "$tmp_dir/ru-ip.json" \
+  --vpn-ip-out "$tmp_dir/vpn-ip.json" \
+  --direct-asn-ip-out "$tmp_dir/direct-asn-ip.json" \
+  --local-ip-out "$tmp_dir/local-ip.json" \
+  --server-if awg-relay \
+  --upstream-if awg-up \
+  --dns-upstreams "1.1.1.1,8.8.8.8" \
+  --antifilter-domains "$domains_file" \
+  --ru-zone "$ru_zone" \
+  --antifilter-ip "$vpn_ip_list" \
+  --direct-asn-prefixes "$direct_asn_prefixes"
+
+python3 - "$tmp_dir" <<'PY'
+import json
+import pathlib
+import sys
+
+tmp_dir = pathlib.Path(sys.argv[1])
+
+direct_domains = json.loads((tmp_dir / "direct-domains.json").read_text())
+vpn_domains = json.loads((tmp_dir / "vpn-domains.json").read_text())
+ru_ip = json.loads((tmp_dir / "ru-ip.json").read_text())
+vpn_ip = json.loads((tmp_dir / "vpn-ip.json").read_text())
+direct_asn_ip = json.loads((tmp_dir / "direct-asn-ip.json").read_text())
+local_ip = json.loads((tmp_dir / "local-ip.json").read_text())
+config = json.loads((tmp_dir / "sing-box.json").read_text())
+
+assert direct_domains["rules"][0]["domain_suffix"][:4] == ["2gis.com", "alfa-bank.com", "avito.com", "cian.com"]
+assert "ru" in direct_domains["rules"][0]["domain_suffix"]
+assert "xn--p1ai" in direct_domains["rules"][0]["domain_suffix"]
+assert "example.com" in vpn_domains["rules"][0]["domain_suffix"]
+assert "blocked.example" in vpn_domains["rules"][0]["domain_suffix"]
+assert "leading-dot.example" in vpn_domains["rules"][0]["domain_suffix"]
+assert "0f5b5df3-526c-4fb8-a421-e0647e59e4d4.xn--80akcja2ahpega0d9c.xn--p1ai" in vpn_domains["rules"][0]["domain_suffix"]
+assert "url.example" not in vpn_domains["rules"][0]["domain_suffix"]
+assert "bad/domain" not in json.dumps(vpn_domains)
+
+assert ru_ip["rules"][0]["ip_cidr"] == ["5.255.255.0/24"]
+assert vpn_ip["rules"][0]["ip_cidr"] == ["1.1.1.0/24", "8.8.8.0/24"]
+assert direct_asn_ip["rules"][0]["ip_cidr"] == ["87.250.250.0/24"]
+assert "10.0.0.0/8" in local_ip["rules"][0]["ip_cidr"]
+assert "224.0.0.0/4" in local_ip["rules"][0]["ip_cidr"]
+
+assert config["dns"]["final"] == "dns-upstream-1"
+assert config["dns"]["servers"][0]["server"] == "1.1.1.1"
+assert config["inbounds"][0]["include_interface"] == ["awg-relay"]
+assert config["outbounds"][1]["bind_interface"] == "eth0"
+assert config["outbounds"][2]["bind_interface"] == "awg-up"
+assert config["route"]["final"] == "vpn-out"
+assert config["route"]["rules"][0]["action"] == "hijack-dns"
+assert config["route"]["rules"][1]["action"] == "sniff"
+PY
 
 echo "routing-lists tests passed"

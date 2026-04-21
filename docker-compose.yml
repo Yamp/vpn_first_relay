@@ -27,6 +27,7 @@ services:
       SPLIT_DNS_UPSTREAMS: "${SPLIT_DNS_UPSTREAMS:-1.1.1.1,8.8.8.8}"
       DIRECT_ASNS_FILE: "${DIRECT_ASNS_FILE:-/config/routing/direct-asns.lst}"
       DIRECT_ASN_PREFIXES_FILE: "${DIRECT_ASN_PREFIXES_FILE:-/config/routing/direct-asn-prefixes.zone}"
+      SING_BOX_TUN_ADDRESS: "${SING_BOX_TUN_ADDRESS:-172.19.0.1/30}"
       ADMIN_USERNAME: "${ADMIN_USERNAME:-admin}"
       ADMIN_PASSWORD: "${ADMIN_PASSWORD:?set ADMIN_PASSWORD in .env or run scripts/install.sh}"
       ADMIN_LISTEN_HOST: "0.0.0.0"

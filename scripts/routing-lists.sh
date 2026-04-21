@@ -5,6 +5,27 @@ ip_from_cidr() {
   printf '%s\n' "${value%%/*}"
 }
 
+first_csv_value() {
+  local csv="$1"
+  local old_ifs="$IFS"
+  local item
+
+  IFS=','
+  for item in $csv; do
+    IFS="$old_ifs"
+    item="${item#"${item%%[![:space:]]*}"}"
+    item="${item%"${item##*[![:space:]]}"}"
+    if [[ -n "$item" ]]; then
+      printf '%s\n' "$item"
+      return 0
+    fi
+    IFS=','
+  done
+  IFS="$old_ifs"
+
+  return 1
+}
+
 normalize_asn() {
   local asn="$1"
   asn="${asn%%#*}"
