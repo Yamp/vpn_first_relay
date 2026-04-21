@@ -150,6 +150,7 @@ local_ip = json.loads((tmp_dir / "local-ip.json").read_text())
 config = json.loads((tmp_dir / "sing-box.json").read_text())
 
 assert direct_domains["rules"][0]["domain_suffix"][:4] == ["2gis.com", "alfa-bank.com", "avito.com", "cian.com"]
+assert "relay-api.eu.2gis.com" in direct_domains["rules"][0]["domain_suffix"]
 assert "ru" in direct_domains["rules"][0]["domain_suffix"]
 assert "xn--p1ai" in direct_domains["rules"][0]["domain_suffix"]
 assert "example.com" in vpn_domains["rules"][0]["domain_suffix"]

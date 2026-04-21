@@ -29,6 +29,7 @@ DEFAULT_DIRECT_DOMAIN_SUFFIXES = [
     "avito.com",
     "cian.com",
     "2gis.com",
+    "relay-api.eu.2gis.com",
 ]
 
 LOCAL_IPV4_CIDRS = [

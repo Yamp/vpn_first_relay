@@ -269,6 +269,7 @@ ozon.com
 avito.com
 cian.com
 2gis.com
+relay-api.eu.2gis.com
 ```
 
 The container also creates an editable ASN allowlist at:
