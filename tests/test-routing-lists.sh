@@ -167,6 +167,7 @@ assert "224.0.0.0/4" in local_ip["rules"][0]["ip_cidr"]
 
 assert config["dns"]["final"] == "dns-upstream-1"
 assert config["dns"]["servers"][0]["server"] == "1.1.1.1"
+assert config["route"]["default_domain_resolver"]["server"] == "dns-upstream-1"
 assert config["inbounds"][0]["include_interface"] == ["awg-relay"]
 assert config["outbounds"][1]["bind_interface"] == "eth0"
 assert config["outbounds"][2]["bind_interface"] == "awg-up"

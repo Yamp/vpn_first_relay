@@ -230,6 +230,9 @@ def build_config(args, dns_upstreams):
             {"type": "block", "tag": "block-out"},
         ],
         "route": {
+            "default_domain_resolver": {
+                "server": dns_servers[0]["tag"],
+            },
             "rule_set": [
                 {
                     "type": "local",
