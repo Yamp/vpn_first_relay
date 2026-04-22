@@ -54,6 +54,7 @@ assert_contains 'ANTIFILTER_DOMAINS_URL="${ANTIFILTER_DOMAINS_URL:-}"' "$ROOT_DI
 assert_contains '      ANTIFILTER_DOMAINS_URL: "${ANTIFILTER_DOMAINS_URL:-}"' "$ROOT_DIR/docker-compose.yml"
 assert_contains 'SING_BOX_TUN_ADDRESS="${SING_BOX_TUN_ADDRESS:-172.19.0.1/30}"' "$ROOT_DIR/scripts/entrypoint.sh"
 assert_contains '      SING_BOX_TUN_ADDRESS: "${SING_BOX_TUN_ADDRESS:-172.19.0.1/30}"' "$ROOT_DIR/docker-compose.yml"
+assert_contains 'COPY scripts/direct-domains-reestr.lst /usr/local/bin/direct-domains-reestr.lst' "$ROOT_DIR/Dockerfile"
 
 ripe_json="$tmp_dir/ripe.json"
 cat > "$ripe_json" <<'JSON'

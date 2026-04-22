@@ -50,6 +50,7 @@ COPY --from=builder /src/amneziawg-tools/src/wg-quick/linux.bash /usr/local/bin/
 COPY admin /opt/awg-admin
 COPY scripts/entrypoint.sh /usr/local/bin/entrypoint.sh
 COPY scripts/render-sing-box-config.py /usr/local/bin/render-sing-box-config.py
+COPY scripts/direct-domains-reestr.lst /usr/local/bin/direct-domains-reestr.lst
 COPY scripts/routing-lists.sh /usr/local/bin/routing-lists.sh
 COPY config/upstream.conf /defaults/upstream.conf
 
