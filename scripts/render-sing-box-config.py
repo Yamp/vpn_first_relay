@@ -31,6 +31,8 @@ DEFAULT_DIRECT_DOMAIN_SUFFIXES = [
     "2gis.com",
 ]
 
+DEFAULT_DIRECT_DOMAINS_FILE = Path(__file__).with_name("direct-domains-reestr.lst")
+
 LOCAL_IPV4_CIDRS = [
     "0.0.0.0/8",
     "10.0.0.0/8",
@@ -313,7 +315,7 @@ def main():
     if not dns_upstreams:
         raise SystemExit("at least one DNS upstream is required")
 
-    direct_domains = load_domain_suffixes([], DEFAULT_DIRECT_DOMAIN_SUFFIXES)
+    direct_domains = load_domain_suffixes([DEFAULT_DIRECT_DOMAINS_FILE], DEFAULT_DIRECT_DOMAIN_SUFFIXES)
     priority_direct_domains = select_priority_direct_domains(direct_domains)
     vpn_domains = load_domain_suffixes([args.antifilter_domains])
     ru_cidrs = load_ipv4_cidrs([args.ru_zone])

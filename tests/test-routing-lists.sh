@@ -151,9 +151,15 @@ direct_asn_ip = json.loads((tmp_dir / "direct-asn-ip.json").read_text())
 local_ip = json.loads((tmp_dir / "local-ip.json").read_text())
 config = json.loads((tmp_dir / "sing-box.json").read_text())
 
-assert direct_domains["rules"][0]["domain_suffix"][:4] == ["2gis.com", "alfa-bank.com", "avito.com", "cian.com"]
-assert priority_direct_domains["rules"][0]["domain_suffix"][:4] == ["2gis.com", "alfa-bank.com", "avito.com", "cian.com"]
 assert "2gis.com" in priority_direct_domains["rules"][0]["domain_suffix"]
+assert "okko.tv" in priority_direct_domains["rules"][0]["domain_suffix"]
+assert "moex.com" in priority_direct_domains["rules"][0]["domain_suffix"]
+assert "rt.com" in priority_direct_domains["rules"][0]["domain_suffix"]
+assert "xn--b1aew.xn--p1ai" in priority_direct_domains["rules"][0]["domain_suffix"]
+assert "okko.tv" in direct_domains["rules"][0]["domain_suffix"]
+assert "moex.com" in direct_domains["rules"][0]["domain_suffix"]
+assert "rt.com" in direct_domains["rules"][0]["domain_suffix"]
+assert "xn--b1aew.xn--p1ai" in direct_domains["rules"][0]["domain_suffix"]
 assert "ru" not in priority_direct_domains["rules"][0]["domain_suffix"]
 assert "ru" in direct_domains["rules"][0]["domain_suffix"]
 assert "xn--p1ai" in direct_domains["rules"][0]["domain_suffix"]

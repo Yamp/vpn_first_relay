@@ -151,6 +151,8 @@ write_dnsmasq_config() {
   local blocked_domains_path="$4"
   local direct_domain_set="$5"
   local vpn_domain_set="$6"
+  local routing_dir
+  local direct_domains_file
   local direct_domains=(
     ru
     xn--p1ai
@@ -175,6 +177,8 @@ write_dnsmasq_config() {
     cian.com
     2gis.com
   )
+  routing_dir="$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+  direct_domains_file="${routing_dir}/direct-domains-reestr.lst"
 
   {
     printf '%s\n' \
@@ -192,6 +196,14 @@ write_dnsmasq_config() {
     for direct_domain in "${direct_domains[@]}"; do
       printf 'ipset=/%s/%s\n' "$direct_domain" "$direct_domain_set"
     done
+    if [[ -f "$direct_domains_file" ]]; then
+      while IFS= read -r direct_domain; do
+        direct_domain="$(normalize_dnsmasq_domain "$direct_domain" || true)"
+        if [[ -n "$direct_domain" ]]; then
+          printf 'ipset=/%s/%s\n' "$direct_domain" "$direct_domain_set"
+        fi
+      done < "$direct_domains_file"
+    fi
 
     local upstream
     local old_ifs="$IFS"

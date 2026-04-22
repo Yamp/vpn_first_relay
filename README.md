@@ -271,6 +271,18 @@ cian.com
 2gis.com
 ```
 
+Additional explicit domains from the public whitelist registry are also routed directly. They are stored in:
+
+```text
+scripts/direct-domains-reestr.lst
+```
+
+The list is sourced from:
+
+```text
+https://reestr-website.ru/
+```
+
 The container also creates an editable ASN allowlist at:
 
 ```text
