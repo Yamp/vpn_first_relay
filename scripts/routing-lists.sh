@@ -172,7 +172,16 @@ write_dnsmasq_config() {
     sberbank.com
     alfa-bank.com
     wildberries.com
+    wb.ru
+    rwb.ru
+    wb-basket.ru
+    wbbasket.ru
+    wbcontent.net
+    wbstatic.net
+    wibes.ru
     ozon.com
+    ozone.ru
+    ozonusercontent.com
     avito.com
     cian.com
     2gis.com
